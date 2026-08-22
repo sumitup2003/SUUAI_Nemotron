@@ -19,8 +19,8 @@ const mono = JetBrains_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Nemo — Nemotron chat",
-  description: "A fast, focused coding chatbot powered by NVIDIA Nemotron.",
+  title: "SUUAI — Ask anything",
+  description: "A fast, focused coding chatbot.",
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
