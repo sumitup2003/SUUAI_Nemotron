@@ -32,7 +32,7 @@ export default function Login() {
             <div className="h-2 w-2 rounded-sm bg-accent shadow-glow" />
           </div>
           <span className="font-display text-[15px] font-semibold tracking-tight text-ink">
-            Nemo
+            SUUAI
           </span>
         </div>
 
