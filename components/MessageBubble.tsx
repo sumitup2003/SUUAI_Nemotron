@@ -1,8 +1,27 @@
 "use client";
 
+import AttachmentBlock from "./AttachmentBlock";
 import { useState } from "react";
 import MarkdownRenderer from "./MarkdownRenderer";
 import type { Role } from "@/lib/types";
+
+type ContentPart =
+  | { type: "text"; value: string }
+  | { type: "attachment"; name: string; value: string };
+
+function splitAttachments(content: string): ContentPart[] {
+  const re = /\[\[\[ATTACH name="([^"]*)"\]\]\]\n([\s\S]*?)\n\[\[\[\/ATTACH\]\]\]/g;
+  const parts: ContentPart[] = [];
+  let lastIndex = 0;
+  let match: RegExpExecArray | null;
+  while ((match = re.exec(content))) {
+    if (match.index > lastIndex) parts.push({ type: "text", value: content.slice(lastIndex, match.index) });
+    parts.push({ type: "attachment", name: match[1], value: match[2] });
+    lastIndex = match.index + match[0].length;
+  }
+  if (lastIndex < content.length) parts.push({ type: "text", value: content.slice(lastIndex) });
+  return parts;
+}
 
 export default function MessageBubble({
   role,
@@ -53,11 +72,17 @@ export default function MessageBubble({
             : "border border-hairline bg-panel text-ink shadow-panel"
         }`}
       >
-         {streaming ? (
+        {streaming ? (
           <GeneratingStatus content={content} />
         ) : content ? (
           <>
-            <MarkdownRenderer content={content} />
+            {splitAttachments(content).map((part, i) =>
+              part.type === "attachment" ? (
+                <AttachmentBlock key={i} name={part.name} content={part.value} />
+              ) : (
+                part.value.trim() && <MarkdownRenderer key={i} content={part.value} />
+              )
+            )}
             {!isUser && (
               <div className="mt-2 flex items-center gap-3 border-t border-hairline pt-2">
                 <button

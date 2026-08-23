@@ -11,11 +11,11 @@ import Composer from "@/components/Composer";
 import {
   CONTEXT_WINDOW_MESSAGES,
   SUMMARIZE_TRIGGER_MESSAGES,
+  VISION_MODEL_ID,
   type Chat,
   type Message,
   type Task,
 } from "@/lib/types";
-
 export default function Home() {
   const [authLoading, setAuthLoading] = useState(true);
   const [session, setSession] = useState<Session | null>(null);
@@ -112,8 +112,21 @@ export default function Home() {
     return chat;
   }, [authedFetch]);
 
+  const uploadFile = useCallback(
+    async (file: File) => {
+      const fd = new FormData();
+      fd.append("file", file);
+      fd.append("chat_id", activeChatId || "unfiled");
+      const res = await authedFetch("/api/upload", { method: "POST", body: fd });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Upload failed");
+      return data as { url: string; name: string; type: string; size: number };
+    },
+    [authedFetch, activeChatId]
+  );
+
   const sendMessage = useCallback(
-    async (text: string) => {
+    async (text: string, images?: string[]) => {
       setError(null);
       let chat = activeChat;
       if (!chat) chat = await createChat();
@@ -151,17 +164,34 @@ export default function Home() {
       // each request's payload roughly constant size as a chat grows, so
       // replies don't get slower the longer you talk - while the summary
       // keeps the model aware of everything that came before.
-      const allSoFar = [...messages, userMsg];
-      const recent = allSoFar.slice(-CONTEXT_WINDOW_MESSAGES);
-      const payloadMessages = chat.summary
-        ? [
-            {
-              role: "system" as const,
-              content: `Summary of earlier conversation so far:\n${chat.summary}`,
-            },
-            ...recent.map((m) => ({ role: m.role, content: m.content })),
-          ]
-        : recent.map((m) => ({ role: m.role, content: m.content }));
+        const allSoFar = [...messages, userMsg];
+      // Everything except the current turn is sent as plain text - images
+      // from earlier turns aren't resent to the model, only described via
+      // their markdown link already baked into that message's content. This
+      // keeps requests small and fast regardless of how many images pile up
+      // over a long chat.
+      const priorRecent = allSoFar.slice(0, -1).slice(-(CONTEXT_WINDOW_MESSAGES - 1));
+      const currentContent: string | Array<Record<string, unknown>> =
+        images && images.length > 0
+          ? [
+              { type: "text", text: text || "Describe what you see." },
+              ...images.map((url) => ({ type: "image_url", image_url: { url } })),
+            ]
+          : text;
+
+      const payloadMessages = [
+        ...(chat.summary
+          ? [
+              {
+                role: "system" as const,
+                content: `Summary of earlier conversation so far:\n${chat.summary}`,
+              },
+            ]
+          : []),
+        ...priorRecent.map((m) => ({ role: m.role, content: m.content })),
+        { role: "user" as const, content: currentContent },
+      ];
+      const modelForThisTurn = images && images.length > 0 ? VISION_MODEL_ID : chat.model;
 
       const INACTIVITY_LIMIT_MS = 45000;
       const controller = new AbortController();
@@ -177,7 +207,7 @@ export default function Home() {
         const res = await authedFetch("/api/chat", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ messages: payloadMessages, model: chat.model }),
+          body: JSON.stringify({ messages: payloadMessages, model: modelForThisTurn }),
           signal: controller.signal,
         });
 
@@ -389,7 +419,7 @@ export default function Home() {
           </div>
         )}
 
-        <Composer onSend={sendMessage} disabled={isStreaming} />
+        <Composer onSend={sendMessage} disabled={isStreaming} uploadFile={uploadFile} />
       </div>
     </div>
   );

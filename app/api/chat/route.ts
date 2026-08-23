@@ -24,9 +24,9 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const body = await req.json();
+    const body = await req.json();
   const { messages, model } = body as {
-    messages: { role: string; content: string }[];
+    messages: { role: string; content: string | Array<Record<string, unknown>> }[];
     model?: string;
   };
 

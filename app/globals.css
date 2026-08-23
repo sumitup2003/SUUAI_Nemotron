@@ -115,3 +115,10 @@ body {
   background-clip: text;
   color: transparent;
 }
+
+.msg-prose img {
+  max-width: 100%;
+  border-radius: 10px;
+  border: 1px solid #232a35;
+  margin-top: 0.4em;
+}

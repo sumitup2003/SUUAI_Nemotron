@@ -58,3 +58,27 @@ export const CONTEXT_WINDOW_MESSAGES = 16;
 // the recent window above) get folded into a running summary in the
 // background instead of being resent every time.
 export const SUMMARIZE_TRIGGER_MESSAGES = 24;
+
+// Vision-capable Nemotron model - only used when a message includes an
+// image, so normal text chat keeps using the fast default model.
+export const VISION_MODEL_ID = "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning";
+
+// Extensions whose content gets read and inlined as text context. Anything
+// else (pdf, docx, zip, etc.) still uploads and links, but its content
+// isn't extracted - the model only sees the filename.
+export const TEXT_FILE_EXTENSIONS = [
+  "txt", "md", "markdown", "csv", "json", "js", "jsx", "ts", "tsx", "py",
+  "java", "c", "cpp", "h", "hpp", "go", "rs", "rb", "php", "html", "htm",
+  "css", "scss", "yml", "yaml", "xml", "sql", "sh", "log", "ini", "toml",
+];
+
+export const MAX_ATTACHMENTS = 4;
+export const MAX_FILE_MB = 4;
+
+export const SPREADSHEET_EXTENSIONS = ["xlsx", "xls"];
+export const PDF_EXTENSIONS = ["pdf"];
+export const DOCX_EXTENSIONS = ["docx"];
+// Cap how much extracted text (spreadsheet, pdf, docx, or plain text file)
+// gets injected into the prompt, so one huge file can't blow out the
+// context window or slow every reply down.
+export const MAX_EXTRACTED_CHARS = 12000;
