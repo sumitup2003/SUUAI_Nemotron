@@ -73,7 +73,7 @@ export const TEXT_FILE_EXTENSIONS = [
 ];
 
 export const MAX_ATTACHMENTS = 4;
-export const MAX_FILE_MB = 4;
+export const MAX_FILE_MB = 15;
 
 export const SPREADSHEET_EXTENSIONS = ["xlsx", "xls"];
 export const PDF_EXTENSIONS = ["pdf"];
