@@ -7,28 +7,28 @@ const config: Config = {
   ],
   theme: {
     extend: {
-      colors: {
-        base: "#0A0D12",
-        panel: "#11151C",
-        raised: "#161B24",
-        hairline: "#232A35",
-        ink: "#E7ECF2",
-        muted: "#8992A3",
-        faint: "#57606F",
+            colors: {
+        base: "rgb(var(--color-base) / <alpha-value>)",
+        panel: "rgb(var(--color-panel) / <alpha-value>)",
+        raised: "rgb(var(--color-raised) / <alpha-value>)",
+        hairline: "rgb(var(--color-hairline) / <alpha-value>)",
+        ink: "rgb(var(--color-ink) / <alpha-value>)",
+        muted: "rgb(var(--color-muted) / <alpha-value>)",
+        faint: "rgb(var(--color-faint) / <alpha-value>)",
         accent: {
-          DEFAULT: "#6E5BFF",
-          soft: "#241F45",
-          bright: "#8B7CFF",
+          DEFAULT: "rgb(var(--color-accent) / <alpha-value>)",
+          soft: "rgb(var(--color-accent-soft) / <alpha-value>)",
+          bright: "rgb(var(--color-accent-bright) / <alpha-value>)",
         },
         teal: {
-          DEFAULT: "#29D3C2",
-          soft: "#122A28",
+          DEFAULT: "rgb(var(--color-teal) / <alpha-value>)",
+          soft: "rgb(var(--color-teal-soft) / <alpha-value>)",
         },
         amber: {
-          DEFAULT: "#F5A65B",
-          soft: "#2B2013",
+          DEFAULT: "rgb(var(--color-amber) / <alpha-value>)",
+          soft: "rgb(var(--color-amber-soft) / <alpha-value>)",
         },
-        danger: "#FF6B6B",
+        danger: "rgb(var(--color-danger) / <alpha-value>)",
       },
       fontFamily: {
         display: ["var(--font-display)", "sans-serif"],

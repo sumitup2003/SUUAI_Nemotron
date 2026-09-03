@@ -1,6 +1,5 @@
 "use client";
 
-import * as XLSX from "xlsx";
 import { useEffect, useRef, useState } from "react";
 import { MAX_ATTACHMENTS, MAX_FILE_MB, MAX_EXTRACTED_CHARS, SPREADSHEET_EXTENSIONS, PDF_EXTENSIONS, DOCX_EXTENSIONS, TEXT_FILE_EXTENSIONS } from "@/lib/types";
 
@@ -16,6 +15,31 @@ interface Attachment {
   uploadedUrl?: string;
   status: "reading" | "uploading" | "ready" | "error";
   error?: string;
+}
+
+async function compressImage(file: File, maxDim = 1600, quality = 0.82): Promise<File> {
+  try {
+    const bitmap = await createImageBitmap(file);
+    let { width, height } = bitmap;
+    if (width > maxDim || height > maxDim) {
+      const ratio = Math.min(maxDim / width, maxDim / height);
+      width = Math.round(width * ratio);
+      height = Math.round(height * ratio);
+    }
+    const canvas = document.createElement("canvas");
+    canvas.width = width;
+    canvas.height = height;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return file;
+    ctx.drawImage(bitmap, 0, 0, width, height);
+    const blob: Blob | null = await new Promise((resolve) => canvas.toBlob(resolve, "image/jpeg", quality));
+    if (!blob) return file;
+    const newName = file.name.replace(/\.[^.]+$/, "") + ".jpg";
+    return new File([blob], newName, { type: "image/jpeg" });
+  } catch {
+    // if compression fails for any reason, fall back to the original file
+    return file;
+  }
 }
 
 function extOf(name: string) {
@@ -46,15 +70,31 @@ export default function Composer({
 
   const busy = attachments.some((a) => a.status === "reading" || a.status === "uploading");
 
-  const addFiles = async (files: FileList | null) => {
+   const IMAGE_EXT_RE = /\.(jpe?g|png|gif|webp|heic|heif|bmp|avif)$/i;
+
+  const addFiles = async (files: FileList | null, forceImage = false) => {
     if (!files || files.length === 0) return;
     const room = MAX_ATTACHMENTS - attachments.length;
     const picked = Array.from(files).slice(0, Math.max(room, 0));
 
-    for (const file of picked) {
+    for (const rawFile of picked) {
       const id = crypto.randomUUID();
+      // Some phones (notably many Android camera apps) hand back a captured
+      // photo with an empty file.type, which silently broke image detection
+      // here - the photo got treated as a generic attachment instead of an
+      // image, so the vision model never got called. Since the camera
+      // button only ever produces images, forceImage skips the unreliable
+      // MIME sniffing entirely for that path; the extension check is a
+      // second fallback for the regular file picker.
+      const isImage =
+        forceImage || rawFile.type.startsWith("image/") || IMAGE_EXT_RE.test(rawFile.name);
+      // Phone camera photos are often 5-15MB at full resolution, which
+      // exceeds Vercel's ~4.5MB request body limit and used to crash with
+      // a raw non-JSON error. Shrinking images client-side first fixes
+      // that at the source instead of just rejecting most real photos.
+      const file = isImage ? await compressImage(rawFile) : rawFile;
+
       const ext = extOf(file.name);
-      const isImage = file.type.startsWith("image/");
       const isSpreadsheet = SPREADSHEET_EXTENSIONS.includes(ext);
       const isPdf = PDF_EXTENSIONS.includes(ext);
       const isDocx = DOCX_EXTENSIONS.includes(ext);
@@ -236,7 +276,7 @@ export default function Composer({
           capture="environment"
           className="hidden"
           onChange={(e) => {
-            addFiles(e.target.files);
+            addFiles(e.target.files, true);
             e.target.value = "";
           }}
         />

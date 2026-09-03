@@ -112,13 +112,26 @@ export default function Home() {
     return chat;
   }, [authedFetch]);
 
-  const uploadFile = useCallback(
+   const uploadFile = useCallback(
     async (file: File) => {
       const fd = new FormData();
       fd.append("file", file);
       fd.append("chat_id", activeChatId || "unfiled");
       const res = await authedFetch("/api/upload", { method: "POST", body: fd });
-      const data = await res.json();
+
+      let data: { url?: string; name?: string; type?: string; size?: number; error?: string };
+      try {
+        data = await res.json();
+      } catch {
+        // The platform itself rejected the request (e.g. still too large)
+        // before our code could return proper JSON - show a clean message
+        // instead of a raw parse error.
+        throw new Error(
+          res.status === 413
+            ? "That file is still too large to upload, even after compression."
+            : `Upload failed (${res.status}). Please try again.`
+        );
+      }
       if (!res.ok) throw new Error(data.error || "Upload failed");
       return data as { url: string; name: string; type: string; size: number };
     },

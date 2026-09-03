@@ -2,34 +2,66 @@
 @tailwind components;
 @tailwind utilities;
 
+:root {
+  --color-base: 10 13 18;
+  --color-panel: 17 21 28;
+  --color-raised: 22 27 36;
+  --color-hairline: 35 42 53;
+  --color-ink: 231 236 242;
+  --color-muted: 137 146 163;
+  --color-faint: 87 96 111;
+  --color-accent: 110 91 255;
+  --color-accent-soft: 36 31 69;
+  --color-accent-bright: 139 124 255;
+  --color-teal: 41 211 194;
+  --color-teal-soft: 18 42 40;
+  --color-amber: 245 166 91;
+  --color-amber-soft: 43 32 19;
+  --color-danger: 255 107 107;
+}
+
+[data-theme="light"] {
+  --color-base: 247 248 250;
+  --color-panel: 255 255 255;
+  --color-raised: 241 242 245;
+  --color-hairline: 226 229 234;
+  --color-ink: 23 26 33;
+  --color-muted: 91 100 114;
+  --color-faint: 154 162 175;
+  --color-accent-soft: 238 236 255;
+  --color-teal-soft: 227 251 248;
+  --color-amber-soft: 255 243 228;
+}
+
 html,
 body {
   height: 100%;
 }
 
 body {
-  background: #0a0d12;
+  background: rgb(var(--color-base));
   background-image:
     radial-gradient(1200px 600px at 15% -10%, rgba(110, 91, 255, 0.10), transparent 60%),
     radial-gradient(900px 500px at 100% 0%, rgba(41, 211, 194, 0.07), transparent 55%);
-  color: #e7ecf2;
+  color: rgb(var(--color-ink));
+  transition: background-color 0.2s ease, color 0.2s ease;
 }
 
 /* Slim, quiet scrollbars everywhere */
 * {
   scrollbar-width: thin;
-  scrollbar-color: #2a3140 transparent;
+  scrollbar-color: rgb(var(--color-hairline)) transparent;
 }
 *::-webkit-scrollbar {
   width: 8px;
   height: 8px;
 }
 *::-webkit-scrollbar-thumb {
-  background: #2a3140;
+  background: rgb(var(--color-hairline));
   border-radius: 8px;
 }
 *::-webkit-scrollbar-thumb:hover {
-  background: #384157;
+  background: rgb(var(--color-faint));
 }
 *::-webkit-scrollbar-track {
   background: transparent;

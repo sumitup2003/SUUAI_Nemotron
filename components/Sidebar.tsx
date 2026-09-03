@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react";
 import type { Chat, Task } from "@/lib/types";
+import ThemeToggle from "./ThemeToggle";
 
 interface SidebarProps {
   chats: Chat[];
@@ -254,7 +255,8 @@ export default function Sidebar({
             <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-raised font-mono text-[10px] text-muted">
               {userEmail.slice(0, 1).toUpperCase()}
             </div>
-            <span className="min-w-0 flex-1 truncate text-xs text-muted">{userEmail}</span>
+             <span className="min-w-0 flex-1 truncate text-xs text-muted">{userEmail}</span>
+            <ThemeToggle />
             <button
               onClick={onSignOut}
               title="Sign out"
