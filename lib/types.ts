@@ -82,3 +82,15 @@ export const DOCX_EXTENSIONS = ["docx"];
 // gets injected into the prompt, so one huge file can't blow out the
 // context window or slow every reply down.
 export const MAX_EXTRACTED_CHARS = 12000;
+
+// Out-of-band marker appended to the raw text stream (never shown to the
+// user) when Nemotron's response was cut off by the token limit, so the
+// client knows to automatically request a continuation instead of leaving
+// the answer incomplete.
+export const TRUNCATION_SENTINEL = "\u0000NEMO_TRUNCATED\u0000";
+export const MAX_AUTO_CONTINUATIONS = 4;
+
+// Steers multi-file code answers into a machine-parseable format so the UI
+// can render each file in its own tabbed panel instead of one long scroll.
+export const FILE_FORMAT_SYSTEM_PROMPT =
+  'When your answer includes source code for one or more files, introduce EVERY file with a line in exactly this format on its own line, with nothing else on that line: "###FILE: path/or/name.ext" immediately followed by a fenced code block containing only that file\'s contents. Use this format even if there is only one file. Do not use bold text, numbering, or any other heading style for file names.';

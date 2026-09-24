@@ -50,8 +50,7 @@ export default function ChatWindow({
           {userName ? `, ${userName}` : ""} — what are we building today?
         </h2>
         <p className="mt-1 max-w-sm text-sm text-muted">
-          Ask for code, a review, a fix, or an explanation — SUUAI streams the answer
-          straight from Nemotron.
+          Ask for code, a review, a fix, or an explanation — SUUAI gives you all.
         </p>
         <div className="mt-6 grid w-full max-w-lg grid-cols-1 gap-2 sm:grid-cols-2">
           {SUGGESTIONS.map((s) => (
@@ -69,8 +68,8 @@ export default function ChatWindow({
   }
 
   return (
-    <div className="flex-1 space-y-5 overflow-y-auto px-3 py-6 sm:px-4 md:px-8">
-      <div className="mx-auto max-w-3xl space-y-5">
+    <div className="min-w-0 flex-1 space-y-5 overflow-x-hidden overflow-y-auto px-3 py-6 sm:px-4 md:px-8">
+      <div className="mx-auto w-full max-w-3xl min-w-0 space-y-5">
         {messages.map((m) => (
           <MessageBubble key={m.id} role={m.role} content={m.content} />
         ))}

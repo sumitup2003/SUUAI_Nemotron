@@ -49,10 +49,14 @@ function extOf(name: string) {
 export default function Composer({
   onSend,
   disabled,
+  isStreaming,
+  onStop,
   uploadFile,
 }: {
   onSend: (text: string, images?: string[]) => void;
   disabled?: boolean;
+  isStreaming?: boolean;
+  onStop?: () => void;
   uploadFile: (file: File) => Promise<{ url: string; name: string; type: string; size: number }>;
 }) {
   const [value, setValue] = useState("");
@@ -319,15 +323,27 @@ export default function Composer({
           placeholder="Ask Nemo to write, explain, or debug some code…"
           className="max-h-[200px] flex-1 resize-none bg-transparent py-1.5 text-base text-ink placeholder:text-faint outline-none md:text-sm"
         />
-        <button
-          onClick={submit}
-          disabled={disabled || busy || (!value.trim() && attachments.every((a) => a.status !== "ready"))}
-          className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-accent text-white transition enabled:hover:bg-accent-bright disabled:opacity-30"
-        >
-          <svg width="15" height="15" viewBox="0 0 24 24" fill="none">
-            <path d="M12 19V5M5 12l7-7 7 7" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-          </svg>
-        </button>
+                {isStreaming ? (
+          <button
+            onClick={onStop}
+            title="Stop generating"
+            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-danger text-white transition hover:bg-danger/80"
+          >
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
+              <rect x="5" y="5" width="14" height="14" rx="2" />
+            </svg>
+          </button>
+        ) : (
+          <button
+            onClick={submit}
+            disabled={disabled || busy || (!value.trim() && attachments.every((a) => a.status !== "ready"))}
+            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-accent text-white transition enabled:hover:bg-accent-bright disabled:opacity-30"
+          >
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none">
+              <path d="M12 19V5M5 12l7-7 7 7" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+          </button>
+        )}
       </div>
       <p className="mx-auto mt-1.5 max-w-3xl text-center font-mono text-[10px] text-faint">
         Enter to send · Shift+Enter for a new line · images up to {MAX_FILE_MB}MB

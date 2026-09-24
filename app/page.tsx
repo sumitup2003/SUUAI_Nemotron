@@ -12,10 +12,16 @@ import {
   CONTEXT_WINDOW_MESSAGES,
   SUMMARIZE_TRIGGER_MESSAGES,
   VISION_MODEL_ID,
+  TRUNCATION_SENTINEL,
+  MAX_AUTO_CONTINUATIONS,
+  FILE_FORMAT_SYSTEM_PROMPT,
   type Chat,
   type Message,
   type Task,
 } from "@/lib/types";
+
+type PayloadMessage = { role: "system" | "user" | "assistant"; content: string | Array<Record<string, unknown>> };
+
 export default function Home() {
   const [authLoading, setAuthLoading] = useState(true);
   const [session, setSession] = useState<Session | null>(null);
@@ -31,11 +37,22 @@ export default function Home() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const activeChat = chats.find((c) => c.id === activeChatId) || null;
+    const activeChat = chats.find((c) => c.id === activeChatId) || null;
   const activeChatIdRef = useRef<string | null>(null);
   useEffect(() => {
     activeChatIdRef.current = activeChatId;
   }, [activeChatId]);
+
+  // Lets the stop button reach whichever request is currently in flight,
+  // and lets sendMessage tell the difference between the user pressing
+  // stop and the 45s inactivity watchdog firing on its own.
+  const abortControllerRef = useRef<AbortController | null>(null);
+  const stopRequestedRef = useRef(false);
+
+  const stopGeneration = useCallback(() => {
+    stopRequestedRef.current = true;
+    abortControllerRef.current?.abort();
+  }, []);
 
   useEffect(() => {
     supabaseClient.auth.getSession().then(({ data }) => {
@@ -112,20 +129,16 @@ export default function Home() {
     return chat;
   }, [authedFetch]);
 
-   const uploadFile = useCallback(
+  const uploadFile = useCallback(
     async (file: File) => {
       const fd = new FormData();
       fd.append("file", file);
       fd.append("chat_id", activeChatId || "unfiled");
       const res = await authedFetch("/api/upload", { method: "POST", body: fd });
-
       let data: { url?: string; name?: string; type?: string; size?: number; error?: string };
       try {
         data = await res.json();
       } catch {
-        // The platform itself rejected the request (e.g. still too large)
-        // before our code could return proper JSON - show a clean message
-        // instead of a raw parse error.
         throw new Error(
           res.status === 413
             ? "That file is still too large to upload, even after compression."
@@ -136,6 +149,47 @@ export default function Home() {
       return data as { url: string; name: string; type: string; size: number };
     },
     [authedFetch, activeChatId]
+  );
+
+  // Streams one /api/chat call to completion, invoking onDelta with the
+  // full accumulated text so far after every chunk. Returns whether the
+  // model's reply was cut off by the token limit (finish_reason: "length"),
+  // detected via a sentinel the API route appends to the stream.
+  const streamOnce = useCallback(
+    async (
+      payloadMessages: PayloadMessage[],
+      model: string,
+      signal: AbortSignal,
+      onDelta: (text: string) => void
+    ): Promise<{ text: string; truncated: boolean }> => {
+      const res = await authedFetch("/api/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ messages: payloadMessages, model }),
+        signal,
+      });
+
+      if (!res.ok || !res.body) {
+        const err = await res.json().catch(() => ({ error: "Unknown error" }));
+        throw new Error(err.error || "Failed to reach Nemotron API");
+      }
+
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let full = "";
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        full += decoder.decode(value, { stream: true });
+        const truncatedSoFar = full.includes(TRUNCATION_SENTINEL);
+        onDelta(truncatedSoFar ? full.replace(TRUNCATION_SENTINEL, "") : full);
+      }
+
+      const truncated = full.includes(TRUNCATION_SENTINEL);
+      return { text: full.replace(TRUNCATION_SENTINEL, ""), truncated };
+    },
+    [authedFetch]
   );
 
   const sendMessage = useCallback(
@@ -172,17 +226,7 @@ export default function Home() {
       setStreamingChatId(chat.id);
       setStreamingContent("");
 
-      // Send a bounded window of recent messages (plus a running summary of
-      // anything older) instead of the entire history every time. This keeps
-      // each request's payload roughly constant size as a chat grows, so
-      // replies don't get slower the longer you talk - while the summary
-      // keeps the model aware of everything that came before.
-        const allSoFar = [...messages, userMsg];
-      // Everything except the current turn is sent as plain text - images
-      // from earlier turns aren't resent to the model, only described via
-      // their markdown link already baked into that message's content. This
-      // keeps requests small and fast regardless of how many images pile up
-      // over a long chat.
+      const allSoFar = [...messages, userMsg];
       const priorRecent = allSoFar.slice(0, -1).slice(-(CONTEXT_WINDOW_MESSAGES - 1));
       const currentContent: string | Array<Record<string, unknown>> =
         images && images.length > 0
@@ -192,66 +236,78 @@ export default function Home() {
             ]
           : text;
 
-      const payloadMessages = [
+      const basePayload: PayloadMessage[] = [
+        { role: "system", content: FILE_FORMAT_SYSTEM_PROMPT },
         ...(chat.summary
-          ? [
-              {
-                role: "system" as const,
-                content: `Summary of earlier conversation so far:\n${chat.summary}`,
-              },
-            ]
+          ? [{ role: "system" as const, content: `Summary of earlier conversation so far:\n${chat.summary}` }]
           : []),
-        ...priorRecent.map((m) => ({ role: m.role, content: m.content })),
-        { role: "user" as const, content: currentContent },
+        ...priorRecent.map((m) => ({ role: m.role, content: m.content } as PayloadMessage)),
+        { role: "user", content: currentContent },
       ];
       const modelForThisTurn = images && images.length > 0 ? VISION_MODEL_ID : chat.model;
 
       const INACTIVITY_LIMIT_MS = 45000;
+      stopRequestedRef.current = false;
       const controller = new AbortController();
+      abortControllerRef.current = controller;
       let inactivityTimer: ReturnType<typeof setTimeout> | null = null;
       const resetInactivityTimer = () => {
         if (inactivityTimer) clearTimeout(inactivityTimer);
         inactivityTimer = setTimeout(() => controller.abort(), INACTIVITY_LIMIT_MS);
       };
 
-      let full = "";
+      let combined = "";
+      let currentPayload = basePayload;
+      let continuations = 0;
+      let hitStreamError = false;
+
       try {
-        resetInactivityTimer();
-        const res = await authedFetch("/api/chat", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ messages: payloadMessages, model: modelForThisTurn }),
-          signal: controller.signal,
-        });
-
-        if (!res.ok || !res.body) {
-          const err = await res.json().catch(() => ({ error: "Unknown error" }));
-          throw new Error(err.error || "Failed to reach Nemotron API");
-        }
-
-        const reader = res.body.getReader();
-        const decoder = new TextDecoder();
-
         while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
           resetInactivityTimer();
-          full += decoder.decode(value, { stream: true });
-          setStreamingContent(full);
+          const { text: chunkText, truncated } = await streamOnce(
+            currentPayload,
+            modelForThisTurn,
+            controller.signal,
+            (partial) => {
+              resetInactivityTimer();
+              setStreamingContent(combined + partial);
+            }
+          );
+          combined += chunkText;
+
+          if (!truncated || continuations >= MAX_AUTO_CONTINUATIONS) break;
+          continuations += 1;
+          currentPayload = [
+            ...currentPayload,
+            { role: "assistant", content: combined },
+            {
+              role: "user",
+              content:
+                "Continue exactly where you left off. Do not repeat anything already written, and don't add any preamble - just keep going.",
+            },
+          ];
         }
-      } catch (e) {
-        const stalled = e instanceof DOMException && e.name === "AbortError";
-        setError(
-          stalled
-            ? "The response stalled and was stopped after 45s of silence. Try again, or switch to the Lightning 30B model — it's the fastest."
-            : e instanceof Error
-            ? e.message
-            : "Something went wrong"
-        );
+            } catch (e) {
+        hitStreamError = true;
+        const aborted = e instanceof DOMException && e.name === "AbortError";
+        if (aborted && stopRequestedRef.current) {
+          // User pressed stop - not an error, just finish up with
+          // whatever was generated so far.
+        } else {
+          setError(
+            aborted
+              ? "The response stalled and was stopped after 45s of silence. Try again, or switch to the Lightning 30B model — it's the fastest."
+              : e instanceof Error
+              ? e.message
+              : "Something went wrong"
+          );
+        }
       } finally {
         if (inactivityTimer) clearTimeout(inactivityTimer);
+        abortControllerRef.current = null;
       }
 
+      const full = combined;
       if (full) {
         const assistantMsg: Message = {
           id: crypto.randomUUID(),
@@ -260,9 +316,6 @@ export default function Home() {
           content: full,
           created_at: new Date().toISOString(),
         };
-        // Only touch the on-screen message list if the user is still
-        // looking at this chat - otherwise leave it alone. It's already
-        // saved below and will load in next time this chat is reopened.
         if (activeChatIdRef.current === chat.id) {
           setMessages((prev) => [...prev, assistantMsg]);
         }
@@ -277,20 +330,20 @@ export default function Home() {
             .then((r) => r.json())
             .then((data) => {
               if (data?.summary) {
-                setChats((prev) =>
-                  prev.map((c) => (c.id === chat!.id ? { ...c, summary: data.summary } : c))
-                );
+                setChats((prev) => prev.map((c) => (c.id === chat!.id ? { ...c, summary: data.summary } : c)));
               }
             })
             .catch(() => {});
         }
+      } else if (!hitStreamError) {
+        setError("No response was generated. Please try again.");
       }
 
       setIsStreaming(false);
       setStreamingChatId(null);
       setStreamingContent("");
     },
-    [activeChat, messages, createChat, authedFetch]
+    [activeChat, messages, createChat, authedFetch, streamOnce]
   );
 
   const deleteChat = useCallback(
@@ -432,7 +485,13 @@ export default function Home() {
           </div>
         )}
 
-        <Composer onSend={sendMessage} disabled={isStreaming} uploadFile={uploadFile} />
+        <Composer
+          onSend={sendMessage}
+          disabled={isStreaming && streamingChatId === activeChatId}
+          isStreaming={isStreaming && streamingChatId === activeChatId}
+          onStop={stopGeneration}
+          uploadFile={uploadFile}
+        />
       </div>
     </div>
   );

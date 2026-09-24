@@ -1,11 +1,8 @@
 import { NextRequest } from "next/server";
 import { getUserFromRequest } from "@/lib/supabase";
+import { TRUNCATION_SENTINEL } from "@/lib/types";
 
 export const runtime = "nodejs";
-// Vercel kills serverless functions after a default timeout (as low as 10s
-// on some plans). Code-heavy answers can take longer than that to stream
-// fully, which is what causes replies to look "stuck" mid-generation - the
-// connection just gets cut. This raises the ceiling to the Hobby-plan max.
 export const maxDuration = 60;
 
 const NEMOTRON_URL = "https://integrate.api.nvidia.com/v1/chat/completions";
@@ -24,7 +21,7 @@ export async function POST(req: NextRequest) {
     );
   }
 
-    const body = await req.json();
+  const body = await req.json();
   const { messages, model } = body as {
     messages: { role: string; content: string | Array<Record<string, unknown>> }[];
     model?: string;
@@ -44,9 +41,6 @@ export async function POST(req: NextRequest) {
       top_p: 0.9,
       max_tokens: 8192,
       stream: true,
-      // Nemotron 3 models are reasoning-capable and otherwise stream their
-      // chain-of-thought through a separate `reasoning_content` field. We
-      // want plain answers in the visible chat, so thinking stays off.
       chat_template_kwargs: { enable_thinking: false },
     }),
   });
@@ -63,11 +57,13 @@ export async function POST(req: NextRequest) {
   const decoder = new TextDecoder();
   const encoder = new TextEncoder();
   let buffer = "";
+  let sawLengthCutoff = false;
 
   const stream = new ReadableStream<Uint8Array>({
     async pull(controller) {
       const { done, value } = await reader.read();
       if (done) {
+        if (sawLengthCutoff) controller.enqueue(encoder.encode(TRUNCATION_SENTINEL));
         controller.close();
         return;
       }
@@ -81,13 +77,16 @@ export async function POST(req: NextRequest) {
         const payload = trimmed.slice(5).trim();
         if (payload === "[DONE]") {
           reader.cancel().catch(() => {});
+          if (sawLengthCutoff) controller.enqueue(encoder.encode(TRUNCATION_SENTINEL));
           controller.close();
           return;
         }
         try {
           const json = JSON.parse(payload);
-          const delta = json.choices?.[0]?.delta?.content;
+          const choice = json.choices?.[0];
+          const delta = choice?.delta?.content;
           if (delta) controller.enqueue(encoder.encode(delta));
+          if (choice?.finish_reason === "length") sawLengthCutoff = true;
         } catch {
           // ignore partial/non-JSON chunks
         }
@@ -99,9 +98,6 @@ export async function POST(req: NextRequest) {
   });
 
   return new Response(stream, {
-    headers: {
-      "Content-Type": "text/plain; charset=utf-8",
-      "Cache-Control": "no-cache",
-    },
+    headers: { "Content-Type": "text/plain; charset=utf-8", "Cache-Control": "no-cache" },
   });
 }
